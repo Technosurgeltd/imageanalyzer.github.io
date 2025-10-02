@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📸 Smart Image Analyzer</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap');
+body {
+  font-family: 'Poppins', sans-serif;
+  background: linear-gradient(135deg, #ece9e6, #ffffff);
+  margin: 0;
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+}
+.container {
+  background: #fff;
+  padding: 30px;
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+  max-width: 1000px;
+  width: 100%;
+  animation: fadeIn 0.8s ease;
+}
+@keyframes fadeIn { from {opacity:0; transform:translateY(20px);} to {opacity:1; transform:translateY(0);} }
+h1 { text-align: center; margin-bottom: 10px; font-size:32px; font-weight:700; }
+h1 .icon { margin-right: 8px; }
+.gradient-text { background: linear-gradient(135deg, #667eea, #764ba2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.subtitle { text-align:center; color:#555; font-size:15px; margin-bottom:25px; }
+.upload-section { display:flex; justify-content:center; align-items:center; gap:15px; flex-wrap:wrap; margin-bottom:25px; }
+.file-input-wrapper { position:relative; overflow:hidden; display:inline-block; }
+.file-input-wrapper input[type=file] { font-size:100px; position:absolute; left:0; top:0; opacity:0; cursor:pointer; }
+.upload-btn, .analyze-btn {
+  border:none;
+  padding:12px 24px;
+  border-radius:10px;
+  font-size:16px;
+  font-weight:600;
+  cursor:pointer;
+  transition:0.3s;
+}
+.upload-btn { background: linear-gradient(135deg, #667eea, #764ba2); color:white; }
+.upload-btn:hover { transform: scale(1.05); }
+.analyze-btn { background: linear-gradient(135deg, #36d1dc, #5b86e5); color:white; }
+.analyze-btn:disabled { background:#aaa; cursor:not-allowed; }
+.analyze-btn:hover:not(:disabled) { transform: scale(1.05); box-shadow:0 4px 12px rgba(0,0,0,0.15); }
+.spinner { border:3px solid #f3f3f3; border-top:3px solid white; border-radius:50%; width:16px; height:16px; animation: spin 0.7s linear infinite; display:inline-block; margin-left:8px; }
+@keyframes spin { 0%{transform:rotate(0deg);} 100%{transform:rotate(360deg);} }
+
+/* Preview container: single line images */
+.preview {
+  display: flex;
+  flex-direction: row; /* single line */
+  align-items: center;
+  gap: 14px;
+  overflow-x: auto; /* horizontal scroll if needed */
+  margin-bottom: 20px;
+  flex-wrap: nowrap;
+}
+
+/* Individual image card */
+.image-card {
+  position: relative;
+  border: 2px solid transparent;
+  border-radius: 14px;
+  overflow: hidden;
+  width: 120px;
+  height: 120px;
+  box-shadow:0 2px 8px rgba(0,0,0,0.08);
+  transition:0.3s;
+}
+.image-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display:block;
+}
+.delete-btn {
+  position:absolute;
+  top:6px;
+  right:6px;
+  background:rgba(0,0,0,0.6);
+  color:white;
+  border:none;
+  border-radius:50%;
+  width:24px;
+  height:24px;
+  cursor:pointer;
+  font-size:14px;
+  line-height:24px;
+  text-align:center;
+}
+.badge {
+  position:absolute;
+  bottom:6px;
+  left:6px;
+  background:black; /* black badge */
+  color:white;
+  padding:5px 10px;
+  border-radius:8px;
+  font-size:12px;
+  font-weight:bold;
+  display:none;
+  animation: pop 0.6s ease;
+}
+@keyframes pop { 0%{transform:scale(0);opacity:0;} 80%{transform:scale(1.2);opacity:1;} 100%{transform:scale(1);} }
+
+/* Best image border black only */
+.best { border-color: black; }
+
+.result {
+  margin-top:25px;
+  text-align:center;
+  display:none;
+}
+.result h2, .result p {
+  font-size:18px;
+  margin:6px 0;
+  font-weight:600;
+  color:black;
+}
+.result h2 .gradient-text {
+  color:black;
+  -webkit-background-clip: unset;
+  -webkit-text-fill-color: unset;
+  font-weight:700;
+}
+
+.warning { text-align:center; color:#e74c3c; font-size:14px; margin-bottom:12px; display:none; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1><span class="icon">📸</span><span class="gradient-text">Smart Image Analyzer</span></h1>
+  <p class="subtitle">Upload your photos & let AI choose the best one for you</p>
+
+  <div class="warning" id="warning">⚠️ You can upload maximum 5 images only.</div>
+  <div class="upload-section">
+    <label class="file-input-wrapper">
+      <button class="upload-btn">📤 Select Images</button>
+      <input type="file" id="imageInput" multiple accept="image/*">
+    </label>
+    <button class="analyze-btn" id="analyzeBtn" disabled>🔍 Analyze</button>
+  </div>
+  <div class="preview" id="preview"></div>
+  <div class="result" id="result"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.2/axios.min.js"></script>
+<script>
+const cloudName = "dg6zcxi1g"; 
+const uploadPreset = "unsigned_preset"; 
+const n8nWebhook = "https://techsurge.app.n8n.cloud/webhook/image-analyzer";
+
+const imageInput = document.getElementById("imageInput");
+const analyzeBtn = document.getElementById("analyzeBtn");
+const preview = document.getElementById("preview");
+const result = document.getElementById("result");
+const warning = document.getElementById("warning");
+
+let selectedFiles = [];
+let uploadedImages = [];
+
+imageInput.addEventListener("change", () => {
+  let newFiles = Array.from(imageInput.files);
+  if (selectedFiles.length + newFiles.length > 5) {
+    warning.style.display = "block";
+    newFiles = newFiles.slice(0, 5 - selectedFiles.length);
+  } else warning.style.display = "none";
+
+  selectedFiles = selectedFiles.concat(newFiles).slice(0,5);
+  imageInput.value = "";
+  renderPreview();
+  analyzeBtn.disabled = selectedFiles.length === 0;
+});
+
+function renderPreview(){
+  preview.innerHTML = "";
+  selectedFiles.forEach((file, index)=>{
+    const reader = new FileReader();
+    reader.onload = e=>{
+      const div = document.createElement("div");
+      div.className="image-card";
+      div.innerHTML = `<img src="${e.target.result}" alt="Image ${index+1}">
+                       <button class="delete-btn" onclick="deleteImage(${index})">×</button>
+                       <div class="badge">Best</div>`;
+      preview.appendChild(div);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function deleteImage(index){
+  selectedFiles.splice(index,1);
+  uploadedImages = uploadedImages.filter(img=>img.index!==index);
+  renderPreview();
+  analyzeBtn.disabled = selectedFiles.length===0;
+}
+
+analyzeBtn.addEventListener("click", async ()=>{
+  if(selectedFiles.length===0) return;
+  analyzeBtn.disabled=true;
+  analyzeBtn.innerHTML='Analyzing <span class="spinner"></span>';
+  uploadedImages=[];
+
+  // Upload to Cloudinary
+  for(const [index,file] of selectedFiles.entries()){
+    const formData=new FormData();
+    formData.append("file",file);
+    formData.append("upload_preset",uploadPreset);
+    formData.append("folder","user_uploads");
+    try{
+      const res=await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,formData);
+      uploadedImages.push({url:res.data.secure_url,index});
+    }catch(err){console.error("Cloudinary error:",err);}
+  }
+
+  // Call N8N webhook
+  try{
+    const urls=uploadedImages.map(img=>img.url);
+    const response=await axios.post(n8nWebhook,{images:urls});
+    const data=response.data;
+
+    // Highlight best image (black border only)
+    selectedFiles.forEach((file,idx)=>{
+      const card=preview.children[idx];
+      card.classList.remove("best");
+      card.querySelector(".badge").style.display="none";
+      if(uploadedImages[idx].url===data.bestImage){
+        card.classList.add("best");
+        card.querySelector(".badge").style.display="block";
+      }
+    });
+
+    // Show result
+    result.style.display="block";
+   result.innerHTML=`<h2><span class="icon">🏆</span> Best Picture: ${data.fileName}</h2>
+                  <p><strong>Score:</strong> ${data.score}</p>
+                  <p><strong>Reason:</strong> ${data.reason}</p>`;
+
+  }catch(err){
+    console.error("Webhook error:",err);
+    alert("Analysis failed.");
+  }
+
+  analyzeBtn.disabled=false;
+  analyzeBtn.textContent="🔍 Analyze";
+});
+</script>
+</body>
+</html>
+
+
